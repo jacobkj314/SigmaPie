@@ -11,6 +11,7 @@
 from sigmapie.sl_class import *
 from sigmapie.tsl_class  import *
 from sigmapie.mtsl_class import *
+from sigmapie.mitsl_class import *
 from sigmapie.sp_class import *
 from sigmapie.ostia import *
 
