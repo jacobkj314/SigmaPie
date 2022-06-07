@@ -32,8 +32,10 @@ class FSM(object):
         Arguments:
             grammar (list): SL ngrams.
         """
+        '''
         if not grammar:
             raise ValueError("The grammar must not be empty.")
+            '''# # This part was commented out to work with MITSL
         self.transitions = [(i[:-1], i[-1], i[1:]) for i in grammar]
 
     def scan_sl(self, string):
@@ -56,7 +58,8 @@ class FSM(object):
         for i in range(k - 1, len(string)):
             move_to_next = []
             for j in self.transitions:
-                can_read = string[(i - k + 1) : (i + 1)] == "".join(j[0]) + j[1]
+                # #can_read = string[(i - k + 1) : (i + 1)] == "".join(j[0]) + j[1]
+                can_read = list(string[(i - k + 1) : (i + 1)]) == list(j[0]) + [j[1]]# #The above line was modified for compatibility with MITSL
                 move_to_next.append(can_read)
 
             if not any(move_to_next):

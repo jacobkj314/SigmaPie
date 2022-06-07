@@ -10,14 +10,12 @@ option) any later version.
 from copy import deepcopy
 from random import choice, randint
 from itertools import product
-from sigmapie.mtsl_class import *
+from sigmapie.tsl_class import *
 from sigmapie.fsm_family import *
 
-from re import findall
 
-
-class MITSL(MTSL):
-    """A class for Multiple Input-local Tier-based Strictly Local grammars and languages.
+class MITSL(TSL):
+    """A class for tier-based strictly local grammars and languages.
 
     Attributes:
         alphabet (list): alphabet used in the language;
@@ -39,28 +37,13 @@ class MITSL(MTSL):
         """Initializes the TSL object."""
         super().__init__(alphabet, grammar, k, data, edges, polar)
         self.fsm = FSMFamily()
-        self.m = 2 # #hard code this value, since we are not equipped to deal with larger m-factors being projected
         if self.k != 2:
             raise NotImplementedError(
                 "The learner for k-MTSL languages is " "still being designed."
             )
         self.tier = None
 
-    def annotate_string(self, string):
-        """Annotates the string with the start and end symbols.
-
-        Arguments:
-            string (str): a string that needs to be annotated.
-        Returns:
-            str: annotated version of the string.
-        """
-        return ">" * (self.k*self.m - 1) + string.strip() + "<" * (self.k*self.m - 1)
-    
-    def extract_alphabet(self):
-        L.extract_alphabet(self)
-        self.symbols = {"".join(gram) for gram in self.generate_all_ngrams(self.alphabet, self.m)}.union({edge * self.m for edge in self.edges})
-
-    def learn(self):#updated for MITSL
+    def learn(self):
         """
         Learns 2-local MTSL grammar for a given sample. The algorithm 
         currently works only for k=2 and is based on MTSL2IA designed 
@@ -80,48 +63,52 @@ class MITSL(MTSL):
                 "run `grammar.extract_alphabet`."
             )
 
-        possible = set("".join(c) for c in self.generate_all_ngrams(self.alphabet, self.k*self.m))
-
+        possible = set(self.generate_all_ngrams(self.alphabet, self.k))
         attested = set()
         for d in self.data:
-            d = self.annotate_string(d)
-            grams = [d[i:i+self.k*self.m] for i in range(len(d)-self.k*self.m+1)]
-            attested.update(set(grams))
+            bigrams = self.ngramize_item(self.annotate_string(d))
+            attested.update(set(bigrams))
         unattested = list(possible.difference(attested))
 
-        paths = [(p[0], set(p[1]), p[2]) for p in self.all_paths(self.data)]
-
+        paths = self.all_paths(self.data)
         grammar = []
 
-        # # default tier to make adjacent symbols mergeable
-        defaultRestrictions = []
-        for s1 in self.symbols:#k is hard-coded to 2 here as well
-            for s2 in self.symbols:
-                if s1[1:] != s2[:-1]:
-                    defaultRestrictions.append(s1 + s2)
-        grammar.append((tuple(self.symbols), defaultRestrictions))
+        for bgr in unattested:
+            tier = self.alphabet[:]
 
-        b = list(self.symbols)
+            for s in self.alphabet:
+                rmv = True
 
-        for gram in unattested:
-            p1 = gram[:self.m]; p2 = gram[self.m:]# #value of k is all but hard-coded
-            c = {p1, p2}
-            c.update([edge * self.m for edge in self.edges])
-            for s in b:
-                if s == p1 or s == p2:
+                # condition 1
+                if s in bgr:
+                    rmv = False
                     continue
-                if not all(((p[0], p[1].difference({s}), p[2]) in paths for p in (path for path in paths if path[0] == p1 and s in path[1] and path[2] == p2))):
-                    c.add(s)
-            grammar.append((c, gram))
 
+                # condition 2
+                relevant_paths = []
+                for p in paths:
+                    if (p[0] == bgr[0]) and (p[-1] == bgr[-1]) and (s in p[1]):
+                        relevant_paths.append(p)
+                for rp in relevant_paths:
+                    new = [rp[0], set(i for i in rp[1] if i != s), rp[2]]
+                    if new not in paths:
+                        rmv = False
+                        break
+
+                # remove from the tier if passed both conditions
+                if rmv:
+                    tier.remove(s)
+
+            grammar.append((tier, bgr))
         gathered = self.gather_grammars(grammar)
+
         self.grammar = gathered
         self.tier = [i for i in self.grammar]
 
         if self.check_polarity() == "p":
             self.grammar = self.opposite_polarity()
 
-    def scan(self, string, verbose = False):#updated for MITSL
+    def scan(self, string):
         """Scan string with respect to a given MTSL grammar.
 
         Arguments:
@@ -130,32 +117,25 @@ class MITSL(MTSL):
             bool: well-formedness of the string.
         """
         tier_evals = []
-            
-        string = self.annotate_string(string)
-        bigrams = [string[i:i+self.m] for i in range(len(string)-self.m + 1)]
+
         for tier in self.grammar:
             t = tier
-            restrictions = self.grammar[tier]
+            g = self.grammar[tier]
 
-            projection = [kfactor for kfactor in bigrams if kfactor in tier]
+            delete_non_tier = "".join([i for i in string if i in t])
+            tier_image = self.annotate_string(delete_non_tier)
+            ngrams = self.ngramize_item((tier_image))
 
-            this_tier = [((projection[i] + projection[i+1]) in restrictions) for i in range(len(projection) - 1)]
+            this_tier = [(ngr in g) for ngr in ngrams]
 
-            """if self.check_polarity() == "p":
-                tier_evals.append(all(this_tier))
-            else:"""
-            valid = False
             if self.check_polarity() == "p":
-                valid = all(this_tier)
+                tier_evals.append(all(this_tier))
             else:
-                valid = not any(this_tier)
-            if verbose and not valid:
-                print(string, tier, projection, sorted(restrictions))
-            tier_evals.append(valid)
+                tier_evals.append(not any(this_tier))
 
         return all(tier_evals)
 
-    def gather_grammars(self, grammar):#updated for MITSL
+    def gather_grammars(self, grammar):
         """Gathers grammars with the same tier together.
 
         Arguments:
@@ -174,7 +154,7 @@ class MITSL(MTSL):
                 G[tuple(i[0])] = [i[1]]
         return G
 
-    def path(self, string):#updated for MITSL
+    def path(self, string):
         """Collects a list of paths from a string.
 
         A path is a
@@ -189,20 +169,18 @@ class MITSL(MTSL):
         string = self.annotate_string(string)
         paths = []
 
-        data = [string[i:i+self.m] for i in range(len(string) - self.m + 1)]
-        n = len(data)
-        for start in range(0, n-2):
-            for end in range(start+2, n):
-                first = data[start]
-                middle = data[start+1:end]
-                last = data[end]
-                path = [first, middle, last]
+        for i in range(len(string) - 1):
+            for j in range(i + 1, len(string)):
+                path = [string[i]]
+                path.append(set(k for k in string[(i + 1) : j]))
+                path.append(string[j])
+
                 if path not in paths:
                     paths.append(path)
 
         return paths
 
-    def all_paths(self, dataset):#updated for MITSL
+    def all_paths(self, dataset):
         """Finds all paths that are present in a list of strings.
 
         Arguments:
@@ -218,7 +196,7 @@ class MITSL(MTSL):
 
         return paths
 
-    def opposite_polarity(self):#updated for MITSL
+    def opposite_polarity(self):
         """Generates a grammar of the opposite polarity.
 
         Returns:
@@ -232,17 +210,17 @@ class MITSL(MTSL):
             )
         opposite = {}
         for i in self.grammar:
-            possib = ["".join(ngr) for ngr in self.generate_all_ngrams(list(i), self.k, addEdges=False)]
+            possib = self.generate_all_ngrams(list(i), self.k)
             opposite[i] = [j for j in possib if j not in self.grammar[i]]
 
         return opposite
 
-    def switch_polarity(self):#updated for MITSL
+    def switch_polarity(self):
         """Changes polarity of the grammar, and rewrites grammar to the
         opposite one."""
         self.grammar = self.opposite_polarity()
         self.change_polarity()
-    '''
+
     def map_restrictions_to_fsms(self):
         """Maps restrictions to FSMs: based on the grammar, it creates a list
         of lists, where every sub-list has the following shape:
@@ -278,33 +256,8 @@ class MITSL(MTSL):
             restr_to_fsm.append([tsl.tier[:], tsl.grammar[:], tsl.fsm])
 
         return restr_to_fsm
-'''
-    def map_restrictions_to_fsms(self):#mostly updated for MITSL
-        restr_to_fsm = list()
 
-        '''
-        #this part is an extra fsm that needs to be added for MITSL to ensure that adjacent symbols can be merged
-        g = []
-        tier = self.symbols
-        for s1 in tier:#k is hard-coded to 2 here as well
-            for s2 in tier:
-                if s1[1:] == s2[:-1]:
-                    g.append((s1, s2))
-        fsm = FSM(">>", "<<")
-        fsm.sl_to_fsm(g)
-        restr_to_fsm.append([tier, g, fsm])
-        '''
-
-        grammar = self.grammar if self.check_polarity() == "p" else self.opposite_polarity()
-        for tier, ngrams in grammar.items():
-            g = [tuple(findall("..", ngram)) for ngram in ngrams]#TODO: make sure these next four lines work correctly
-            fsm = FSM(">>", "<<")
-            fsm.sl_to_fsm(g)
-            restr_to_fsm.append([tier, g, fsm])
-        return restr_to_fsm
-
-
-    def fsmize(self):#updated for MITSL
+    def fsmize(self):
         """Builds FSM family corresponding to the given grammar and saves in it
         the fsm attribute."""
         restr_to_fsm = self.map_restrictions_to_fsms()
@@ -365,7 +318,7 @@ class MITSL(MTSL):
 
         return list(data)
 
-    def tier_image(self, string):#updated for MITSL
+    def tier_image(self, string):
         """
         Creates tier images of a string with respect to the different
         tiers listed in the grammar.
@@ -378,10 +331,10 @@ class MITSL(MTSL):
         """
         tiers = {}
         for i in self.grammar:
-            curr_tier = list()
+            curr_tier = ""
             for s in string:
                 if s in self.edges or s in i:
-                    curr_tier += [s]
+                    curr_tier += s
             tiers[i] = curr_tier
         return tiers
 
@@ -391,30 +344,23 @@ class MITSL(MTSL):
         Returns:
             str: a well-formed string.
         """
-        # #word = self.edges[0] * (self.k - 1)# #TODO: need to switch this to a tuple or list of some sort, then merge at the end
-        word = (self.edges[0]*2,) * (self.k - 1) 
+        word = self.edges[0] * (self.k - 1)
         main_smap = self.general_state_map(tier_smap)
         tier_images = self.tier_image(word)
 
-        while word[-1] != self.edges[1] * self.m:
-            print(word)
-
-            maybe = choice(list(main_smap[word[-(self.k - 1) :][0]]))
+        while word[-1] != self.edges[1]:
+            maybe = choice(main_smap[word[-(self.k - 1) :]])
             good = True
             for tier in tier_smap:
                 if maybe in tier:
                     old_image = tier_images[tier]
-                    if maybe not in tier_smap[tier][tuple(old_image[-(self.k - 1) :])]:
+                    if maybe not in tier_smap[tier][old_image[-(self.k - 1) :]]:
                         good = False
             if good:
-                word += (maybe,)# #add to this as a tuple, something like word += [maybe]
+                word += maybe
                 tier_images = self.tier_image(word)
 
-        # #newword = word[(self.k - 1) : -1]
-        newword = word# #
-        print(newword)
-        input()
-
+        newword = word[(self.k - 1) : -1]
         if self.scan(newword):
             return newword
         else:
@@ -443,9 +389,9 @@ class MITSL(MTSL):
         for curr_tier in restr_to_fsm:
             sl = SL()
             sl.change_polarity(self.check_polarity())
-            sl.edges = [edge * self.m for edge in self.edges]
+            sl.edges = self.edges
             sl.k = self.k
-            sl.alphabet = list(curr_tier[0])
+            sl.alphabet = curr_tier[0]
             sl.grammar = curr_tier[1]
             sl.fsm = curr_tier[2]
             tier_smaps[tuple(sl.alphabet)] = sl.state_map()
@@ -468,15 +414,11 @@ class MITSL(MTSL):
         local_smaps = deepcopy(smaps)
 
         for tier in local_smaps:
-            non_tier = [i for i in self.symbols if i not in tier]
+            non_tier = [i for i in self.alphabet if i not in tier]
             for entry in local_smaps[tier]:
                 local_smaps[tier][entry].extend(non_tier)
 
         local_smaps = list(local_smaps.values())
-
-        global s460
-        s460 = deepcopy(local_smaps)
-
         main_smap = deepcopy(local_smaps[0])
 
         for other in local_smaps[1:]:
@@ -489,19 +431,19 @@ class MITSL(MTSL):
                     main_smap[entry] = inter
 
         free_ones = []
-        for i in self.symbols:
+        for i in self.alphabet:
             for j in self.grammar:
                 if i in j:
                     break
             free_ones.append(i)
 
-        ext_alphabet = deepcopy(self.symbols).union({self.edges[1] * self.m})
+        ext_alphabet = deepcopy(self.alphabet) + [self.edges[1]]
         for x in free_ones:
             main_smap[x] = ext_alphabet
 
         return main_smap
 
-    def clean_grammar(self):#I think I need to fix this part to work next!!!
+    def clean_grammar(self):
         """Removes useless ngrams from the grammar.
 
         If negative, it just removes duplicates. If positive, it detects

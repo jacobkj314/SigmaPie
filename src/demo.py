@@ -7,7 +7,8 @@ fsmForGenerate = [
 	
 def generate():
 	s = ""
-	i = 0;v = choice(['a', 'e'])
+	i = 0
+	v = choice(['a', 'e'])
 	for _ in range(randint(4, 12)):
 		n = choice(fsmForGenerate[i])
 		s += v if n[0] == 'x' else n[0]
@@ -16,7 +17,11 @@ def generate():
 
 from sigmapie import *
 
-m = MITSL()
+m = MITSL(polar = "n")
 m.data = [generate() for _ in range(256)]
 m.extract_alphabet()
 m.learn()
+
+m.fsmize()
+
+s460 = None

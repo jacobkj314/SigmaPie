@@ -178,7 +178,7 @@ class SL(L):
             word += choice(statemap[word[-(self.k - 1) :]])
         return word[(self.k - 1) : -1]
 
-    def state_map(self):
+    def state_map(self, addEdges = True):
         """
         Generates a dictionary of possible transitions in the FSM.
         Returns:
@@ -186,16 +186,24 @@ class SL(L):
                 {"keys":[list of possible next symbols]}, where 
                 keys are (k-1)-long strings.
         """
-        local_alphabet = self.alphabet[:] + self.edges[:]
+        
+        # #local_alphabet = self.alphabet[:] + self.edges[:]
+        # #updated for MITSL
+        local_alphabet = self.alphabet[:]
+        if addEdges:
+            local_alphabet += self.edges[:]
+
         poss = product(local_alphabet, repeat=(self.k - 1))
 
         smap = {}
         for i in poss:
             for j in self.fsm.transitions:
                 if j[0] == i:
-                    before = "".join(i)
+                    # #before = "".join(i)
+                    before = tuple(i)
                     if before in smap:
-                        smap[before] += j[1]
+                        # #smap[before] += j[1]
+                        smap[before] += [j[1]]# #updated for MITSL
                     else:
                         smap[before] = [j[1]]
         return smap

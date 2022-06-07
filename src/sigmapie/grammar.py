@@ -103,7 +103,7 @@ class L(object):
 
         return True
 
-    def generate_all_ngrams(self, symbols, k):
+    def generate_all_ngrams(self, symbols, k, addEdges=True):# #Added addEdges parameter to comply with MITSL
         """Generates all possible ngrams of the length k based on the given
         alphabet.
 
@@ -114,8 +114,9 @@ class L(object):
             list: generated ngrams.
         """
         symb = symbols[:]
-        if not ((self.edges[0] in symb) or (self.edges[1] in symb)):
-            symb += self.edges
+        if addEdges:# #Added for MITSL
+            if not ((self.edges[0] in symb) or (self.edges[1] in symb)):
+                symb += self.edges
 
         combinations = product(symb, repeat=k)
         ngrams = []
