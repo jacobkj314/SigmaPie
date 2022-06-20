@@ -352,6 +352,8 @@ class MTSL(TSL):
             maybe = choice(main_smap[word[-(self.k - 1) :]])
             good = True
             for tier in tier_smap:
+                if tier == ('<<',):
+                    True# # # # #
                 if maybe in tier:
                     old_image = tier_images[tier]
                     if maybe not in tier_smap[tier][old_image[-(self.k - 1) :]]:

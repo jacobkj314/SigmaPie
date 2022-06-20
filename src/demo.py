@@ -15,6 +15,11 @@ def generate():
 		i = n[1]
 	return s
 
+def gather(collection):
+	s = set()
+	[s.update(set(element)) for element in collection]
+	return s
+
 from sigmapie import *
 
 m = MITSL(polar = "n")
@@ -24,4 +29,5 @@ m.learn()
 
 m.fsmize()
 
-s460 = None
+
+#m.generate_sample()
