@@ -52,7 +52,7 @@ class L(object):
             self.alphabet = []
         symbols = set(self.alphabet)
         if self.data:
-            for item in self.data:
+            for item in progressBar(self.data, prefix = "extracting alphabet"):# #
                 symbols.update({j for j in item})
         if self.grammar:
             for item in self.grammar:
@@ -103,7 +103,7 @@ class L(object):
 
         return True
 
-    def generate_all_ngrams(self, symbols, k, addEdges=True):# #Added addEdges parameter to comply with MITSL
+    def generate_all_ngrams(self, symbols, k, addEdges=True, printProgressBar=False):# #Added addEdges parameter to comply with MITSL
         """Generates all possible ngrams of the length k based on the given
         alphabet.
 
@@ -120,6 +120,10 @@ class L(object):
 
         combinations = product(symb, repeat=k)
         ngrams = []
+
+        if printProgressBar:# #I don't always want to do this, since this one gets called a lot, so making this optional
+            combinations = progressBar([i for i in combinations], prefix = "generating ngrams")
+
         for ngram in combinations:
             if self.well_formed_ngram(ngram) and (ngram not in ngrams):
                 ngrams.append(ngram)

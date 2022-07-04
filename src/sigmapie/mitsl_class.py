@@ -69,11 +69,11 @@ class MITSL(MTSL):
                 the result is not correct: update manually.
         """
         L.extract_alphabet(self)
-        self.extract_mgram_symbols()
+        self.extract_mgram_symbols()# #added progress bar here too
 
     def extract_mgram_symbols(self):
         """Generates all m-length symbols from the data and saves in into the 'symbols' attribute """
-        self.symbols = list({"".join(gram) for gram in self.generate_all_ngrams(self.alphabet, self.m)}.union({edge * self.m for edge in self.edges}))
+        self.symbols = list({"".join(gram) for gram in progressBar(self.generate_all_ngrams(self.alphabet, self.m, printProgressBar=True), prefix = "extracting symbols")}.union({edge * self.m for edge in self.edges}))# #
 
     def learn(self):#updated for MITSL
         """
@@ -101,7 +101,7 @@ class MITSL(MTSL):
         possible = set(self.generate_all_ngrams(self.symbols, self.k, addEdges= False))
 
         attested = set()
-        for d in self.data:
+        for d in progressBar(self.data, prefix = "annotating input, attesting k-grams"):# #
             d = self.annotate_string(d, asData = True)
             grams = [d[i:i+self.k*self.m] for i in range(len(d)-self.k*self.m+1)]
             grams = [(gram[:self.m], gram[self.m:]) for gram in grams]
@@ -115,7 +115,7 @@ class MITSL(MTSL):
         grammar = []
 
         b = list(self.symbols)
-        for p1, p2 in unattested:
+        for p1, p2 in progressBar(unattested, prefix = "learning unattested grams"):# #
             c = {p1, p2}
             c.update([edge * self.m for edge in self.edges])
             for s in b:
@@ -228,7 +228,7 @@ class MITSL(MTSL):
             list: a list of paths present in `dataset`.
         """
         paths = []
-        for item in dataset:
+        for item in progressBar(dataset, prefix="calculating paths"):# #
             for p in self.path(item):
                 if p not in paths:
                     paths.append(p)
@@ -308,7 +308,7 @@ class MITSL(MTSL):
                 )
             )
 
-        data = [self.generate_item(tier_smap) for i in range(n)]
+        data = [self.generate_item(tier_smap) for i in progressBar(range(n), prefix = "generating items")]# #
 
         if not repeat:
             data = set(data)
@@ -483,3 +483,8 @@ class MITSL(MTSL):
             sl.fsmize()
             sl.clean_grammar()
             self.grammar[tier] = deepcopy(sl.grammar)
+
+
+
+
+
