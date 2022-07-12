@@ -98,6 +98,8 @@ class MITSL(MTSL):
         if not self.symbols:
             self.extract_mgram_symbols()
 
+        self.data = list(set(self.data))#eliminate duplicates
+
         possible = set(self.generate_all_ngrams(self.symbols, self.k, addEdges= False))
 
         attested = set()
@@ -152,6 +154,7 @@ class MITSL(MTSL):
         tier_evals = []
             
         string = self.annotate_string(string)
+        '''
         bigrams = [string[i:i+self.m] for i in range(len(string)-self.m + 1)]
         for tier in self.grammar:
             t = tier
@@ -160,6 +163,25 @@ class MITSL(MTSL):
             projection = [kfactor for kfactor in bigrams if kfactor in tier]
 
             this_tier = [((projection[i], projection[i+1]) in restrictions) for i in range(len(projection) - 1)]
+
+            valid = False
+            if self.check_polarity() == "p":
+                valid = all(this_tier)
+            else:
+                valid = not any(this_tier)
+            if verbose and not valid:
+                print(string, tier, projection, sorted(restrictions))
+            tier_evals.append(valid)
+        '''# # # This works about right so far
+        # # #This part should be able to ignore restrictions when they occur between overlapping symbols
+        bigrams = [(string[i:i+self.m], i) for i in range(len(string)-self.m + 1)]
+        for tier in self.grammar:
+            t = tier
+            restrictions = self.grammar[tier]
+
+            projection = [kfactor for kfactor in bigrams if kfactor[0] in tier]
+
+            this_tier = [((projection[i][0], projection[i+1][0]) in restrictions) for i in range(len(projection) - 1) if (projection[i+1][1] - projection[i][1] > self.m)]
 
             valid = False
             if self.check_polarity() == "p":
@@ -184,7 +206,7 @@ class MITSL(MTSL):
                 the restrictions imposed on those tiers.
         """
         G = {}
-        for i in grammar:
+        for i in progressBar(grammar, prefix = "gathering grammars"):
             if tuple(i[0]) in G:
                 G[tuple(i[0])] += [i[1]]
             else:
@@ -308,7 +330,8 @@ class MITSL(MTSL):
                 )
             )
 
-        data = [self.generate_item(tier_smap) for i in progressBar(range(n), prefix = "generating items")]# #
+        main_smap = self.general_state_map(tier_smap)# # #I added this part, see also the change in generate_item
+        data = [self.generate_item(tier_smap, main_smap) for i in progressBar(range(n), prefix = "generating items")]# #
 
         if not repeat:
             data = set(data)
@@ -357,17 +380,23 @@ class MITSL(MTSL):
         """Merges tuples of m-length symbols into one string by deleting overlapping letters between symbols"""
         return "".join((s[-1] for s in word[1:-self.m]))
 
-    def generate_item(self, tier_smap):
+    def generate_item(self, tier_smap, main_smap = None):
         """Generates a well-formed string with respect to the given grammar.
 
         Returns:
             str: a well-formed string.
         """
         word = (self.edges[0]*2,) * (self.k - 1) 
+        '''# # #This is the original code
         main_smap = self.general_state_map(tier_smap)
+        '''
+        # # #This is my prototype code - also see the added edit in generate_sample
+        main_smap = main_smap if main_smap is not None else self.general_state_map(tier_smap)#I am saving time by not recalculating this for each sample
+        # # #End my prototype
         tier_images = self.tier_image(word)
 
         while word[-1] != self.edges[1] * self.m:
+            '''# # #This is the original code
             maybe = choice(list(main_smap[word[-(self.k - 1) :][0]]))
 
             good = True
@@ -376,9 +405,33 @@ class MITSL(MTSL):
                     old_image = tier_images[tier]
                     if maybe not in tier_smap[tier][tuple(old_image[-(self.k - 1) :])]:
                         good = False
+                        break# #
             if good:
                 word += (maybe,)
                 tier_images = self.tier_image(word)
+            '''
+            # # #This is my prototype code
+            from random import shuffle# # #move this to the top if this works
+            symbols = list(main_smap[word[-(self.k - 1) :][0]])# # # #modfy this so that IT accomplishes the default tier
+            shuffle(symbols)#just generating a list once and then going through it in a shuffled order is more efficient than picking a different random one each time
+            exhausted = True
+            for maybe in symbols:
+                good = True
+                for tier in tier_smap:
+                    if maybe in tier:
+                        old_image = tier_images[tier]# # # #modify this part so it ignores any overlapping symbols
+                        if maybe not in tier_smap[tier][tuple(old_image[-(self.k - 1) :])]:
+                            good = False
+                            break# #
+                if good:
+                    word += (maybe,)
+                    tier_images = self.tier_image(word)
+                    exhausted = False#we found a symbol that works here, so we did not exhaust our options
+                    break
+            if exhausted:
+                print('We have generated ourselves into a corner with the word ', str(word))
+                return ""
+            # # #End my prototype code
 
         newword = self.merge_symbols(word)
 
@@ -473,7 +526,7 @@ class MITSL(MTSL):
         from which one cannot get     to the final symbol, and removes
         them.
         """
-        for tier in self.grammar:
+        for tier in progressBar(self.grammar, prefix = "cleaning grammar"):# #
             sl = SL()
             sl.change_polarity(self.check_polarity())
             sl.edges = [edge * self.m for edge in self.edges]
