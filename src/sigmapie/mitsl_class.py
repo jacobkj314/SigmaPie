@@ -391,8 +391,8 @@ class MITSL(MTSL):
                     if maybe in tier:
                         old_image = [oldSymbol[0] for oldSymbol in tier_images[tier] if oldSymbol[1] < len(word) - (self.m - 1)]#this ignores any previous symbols that would overlap with the next symbol
                         # # # # #old_image = [oldSymbol[0] for oldSymbol in tier_images[tier]]#this ignores any previous symbols that would overlap with the next symbol
-                        if len(old_image) < self.k - 1:
-                            old_image = (self.edges[0]*2,) * (self.k - 1) 
+                        while len(old_image) < self.k - 1:
+                            old_image = (self.edges[0]*2,) + old_image
                         if maybe not in tier_smap[tier][tuple(old_image[-(self.k - 1) :])]:
                             good = False
                             break# #
