@@ -97,7 +97,7 @@ class MITSL(MTSL):
 
         self.data = list(set(self.data))#eliminate duplicates
 
-        possible = set(self.generate_all_ngrams(self.symbols, self.k, addEdges= False))
+        possible = set(self.generate_all_ngrams(self.symbols, self.k, addEdges= False, printProgressBar=True))
 
         attested = set()
         for d in progressBar(self.data, prefix = "annotating input, attesting k-grams"):# #
@@ -109,7 +109,7 @@ class MITSL(MTSL):
         unattested = list(possible.difference(attested))
 
 
-        paths = [(p[0], set(p[1]), p[2]) for p in self.all_paths(self.data)]
+        paths = self.all_paths(self.data)
 
         grammar = []
 
@@ -204,18 +204,17 @@ class MITSL(MTSL):
             list: list of paths of `string`.
         """
         string = self.annotate_string(string)
-        paths = []
+        paths = set()
 
         data = [string[i:i+self.m] for i in range(len(string) - self.m + 1)]
         n = len(data)
         for start in range(0, n-2):
             for end in range(start+2, n):
                 first = data[start]
-                middle = data[start+1:end]
+                middle = tuple(set(data[start+1:end]))
                 last = data[end]
-                path = [first, middle, last]
-                if path not in paths:
-                    paths.append(path)
+                path = (first, middle, last)                
+                paths.add(path)
 
         return paths
 
@@ -227,13 +226,11 @@ class MITSL(MTSL):
         Returns:
             list: a list of paths present in `dataset`.
         """
-        paths = []
+        paths = set()
         for item in progressBar(dataset, prefix="calculating paths"):# #
-            for p in self.path(item):
-                if p not in paths:
-                    paths.append(p)
+            paths.update(self.path(item))
 
-        return paths
+        return [[first, set(middle), last] for first, middle, last in paths]
 
     def opposite_polarity(self):
         """Generates a grammar of the opposite polarity.
@@ -392,7 +389,7 @@ class MITSL(MTSL):
                         old_image = [oldSymbol[0] for oldSymbol in tier_images[tier] if oldSymbol[1] < len(word) - (self.m - 1)]#this ignores any previous symbols that would overlap with the next symbol
                         # # # # #old_image = [oldSymbol[0] for oldSymbol in tier_images[tier]]#this ignores any previous symbols that would overlap with the next symbol
                         while len(old_image) < self.k - 1:
-                            old_image = (self.edges[0]*2,) + old_image
+                            old_image = [self.edges[0]*2] + old_image
                         if maybe not in tier_smap[tier][tuple(old_image[-(self.k - 1) :])]:
                             good = False
                             break# #

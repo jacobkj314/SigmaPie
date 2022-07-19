@@ -119,16 +119,16 @@ class L(object):
                 symb += self.edges
 
         combinations = product(symb, repeat=k)
-        ngrams = []
+        ngrams = set()
 
         if printProgressBar:# #I don't always want to do this, since this one gets called a lot, so making this optional
             combinations = progressBar([i for i in combinations], prefix = "generating ngrams")
 
         for ngram in combinations:
             if self.well_formed_ngram(ngram) and (ngram not in ngrams):
-                ngrams.append(ngram)
+                ngrams.add(ngram)
 
-        return ngrams
+        return list(ngrams)
 
     def opposite_polarity(self, symbols):
         """Returns the grammar opposite to the one given.
