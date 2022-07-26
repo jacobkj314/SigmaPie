@@ -88,9 +88,9 @@ def remove_from_prefix(w, pref):
     raise ValueError(pref + " is not a prefix of " + w)
 
 
-# #Helper method added to facilitate ease of evaluation. Taken from https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters?noredirect=1&lq=1
 def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
     """
+    Helper method added to facilitate ease of evaluation. Taken from https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters?noredirect=1&lq=1
     Call in a loop to create terminal progress bar
     @params:
         iterable    - Required  : iterable object (Iterable)

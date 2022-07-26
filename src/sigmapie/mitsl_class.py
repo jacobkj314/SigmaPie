@@ -8,8 +8,7 @@ option) any later version.
 """
 
 from copy import deepcopy
-from random import choice, randint, shuffle
-from itertools import product
+from random import shuffle
 from sigmapie.mtsl_class import *
 from sigmapie.fsm_family import *
 
@@ -39,7 +38,7 @@ class MITSL(MTSL):
         super().__init__(alphabet, grammar, k, data, edges, polar)
         self.symbols = set()
         self.fsm = FSMFamily()
-        self.m = 2 #hard code this value for now, since we are not equipped to deal with larger m-factors being projected
+        self.m = 2 
         if self.k != 2:
             raise NotImplementedError(
                 "The learner for k-MTSL languages is " "still being designed."
@@ -51,11 +50,12 @@ class MITSL(MTSL):
 
         Arguments:
             string (str): a string that needs to be annotated.
+            asData (boolean) (optional): whether these are being annotated for input data (True) or as a string to be scanned (False). 
         Returns:
             str: annotated version of the string.
         """
         if asData:
-            return ">" * (self.m*self.k-1) + string.strip() + "<" * (self.m*self.k-1)#used for annotating data
+            return ">" * (self.m*self.k-1) + string.strip() + "<" * (self.m*self.k-1)#used for annotating data - must attest k*m-1 length sequences of edge characters followed by one alphabet character
         return ">" * self.m + string.strip() + "<" * self.m#used for annotating strings to scan
     
     def extract_alphabet(self):
@@ -66,19 +66,22 @@ class MITSL(MTSL):
                 the result is not correct: update manually.
         """
         L.extract_alphabet(self)
-        self.extract_mgram_symbols()# #added progress bar here too
+        self.extract_mgram_symbols()
 
     def extract_mgram_symbols(self):
         """Generates all m-length symbols from the data and saves in into the 'symbols' attribute """
-        self.symbols = list({"".join(gram) for gram in progressBar(self.generate_all_ngrams(self.alphabet, self.m, printProgressBar=True), prefix = "extracting symbols")}.union({edge * self.m for edge in self.edges}))# #
+        self.symbols = list({"".join(gram) for gram in progressBar(self.generate_all_ngrams(self.alphabet, self.m, printProgressBar=True), prefix = "extracting symbols")}.union({edge * self.m for edge in self.edges}))
 
-    def learn(self):#updated for MITSL
+    def learn(self, restrictions_remove = [], symbols_remove = []):
         """
         Learns 2-local MITSL grammar for a given sample. The algorithm 
         currently works only for k=2 and is based on MITSL designed 
         by De Santo and Askenova (2021). This implementation 
         is slightly modified to add m-factors to an empty tier, rather
         than removing m-factors from a complete tier.
+        Arguments:
+            restrictions_remove (list of k-length tuples of m-length symbols representing restrictions, optional): the restrictions, from whose tiers, the symbols_remove symbols should be removed 
+            symbols_remove (list of m-length str symbols): the symbols, which should be removed from the given tier
         Results:
             self.grammar is updated with a grammar of the following shape:
             {(tier_1):[bigrams_for_tier_1],
@@ -100,7 +103,7 @@ class MITSL(MTSL):
         possible = set(self.generate_all_ngrams(self.symbols, self.k, addEdges= False, printProgressBar=True))
 
         attested = set()
-        for d in progressBar(self.data, prefix = "annotating input, attesting k-grams"):# #
+        for d in progressBar(self.data, prefix = "annotating input, attesting k-grams"):
             d = self.annotate_string(d, asData = True)
             grams = [d[i:i+self.k*self.m] for i in range(len(d)-self.k*self.m+1)]
             grams = [(gram[:self.m], gram[self.m:]) for gram in grams]
@@ -114,27 +117,23 @@ class MITSL(MTSL):
         grammar = []
 
         b = list(self.symbols)
-        for p1, p2 in progressBar(unattested, prefix = "learning unattested grams"):# #
+        for p1, p2 in progressBar(unattested, prefix = "learning unattested grams"):
             c = {p1, p2}
             c.update([edge * self.m for edge in self.edges])
             for s in b:
                 if s == p1 or s == p2:
                     continue
-                if not all(((p[0], p[1].difference({s}), p[2]) in paths for p in (path for path in paths if path[0] == p1 and s in path[1] and path[2] == p2))):
+                relevant_paths = [path for path in paths if path[0] == p1 and s in path[1] and path[2] == p2]
+                paths_without_s = [[p[0], p[1].difference({s}), p[2]] for p in relevant_paths]
+                are_paths = [p in paths for p in paths_without_s]
+                _ = [print('add:', p) for p in paths_without_s if p not in paths and ((p1,p2) in restrictions_remove and s in symbols_remove)]#This is a grammar engineering tool: it shows what paths would need to be added to remove particular Symbols from the tier containing particular Restrictions
+                if not all(are_paths):
                     c.add(s)
 
             grammar.append((c, (p1, p2)))
         gathered = self.gather_grammars(grammar)
         self.grammar = gathered
         self.tier = [i for i in self.grammar]
-
-        """ #default tier to make adjacent symbols mergeable
-        defaultRestrictions = []
-        for s1 in self.symbols:#k is hard-coded to 2 here as well
-            for s2 in self.symbols:
-                if s1[1:] != s2[:-1]:
-                    defaultRestrictions.append((s1, s2))
-        self.grammar[tuple(self.symbols)] = defaultRestrictions"""
 
         if self.check_polarity() == "p":
             self.grammar = self.opposite_polarity()
@@ -155,11 +154,13 @@ class MITSL(MTSL):
         bigrams = [(string[i:i+self.m], i) for i in range(len(string)-self.m + 1)]
         for tier in self.grammar:
             t = tier
+
             restrictions = self.grammar[tier]
 
             projection = [kfactor for kfactor in bigrams if kfactor[0] in tier]
 
-            this_tier = [((projection[i][0], projection[i+1][0]) in restrictions) for i in range(len(projection) - 1) if (projection[i+1][1] - projection[i][1] > self.m)]
+            this_tier = [(projection[i][0], projection[i+1][0]) for i in range(len(projection) - 1) if (projection[i+1][1] - projection[i][1] > self.m-1)]
+            this_tier = [pair in restrictions for pair in this_tier]
 
             valid = False
             if self.check_polarity() == "p":
@@ -211,7 +212,7 @@ class MITSL(MTSL):
         for start in range(0, n-2):
             for end in range(start+2, n):
                 first = data[start]
-                middle = tuple(set(data[start+1:end]))
+                middle = tuple(sorted(set(data[start+1:end])))
                 last = data[end]
                 path = (first, middle, last)                
                 paths.add(path)
@@ -227,7 +228,7 @@ class MITSL(MTSL):
             list: a list of paths present in `dataset`.
         """
         paths = set()
-        for item in progressBar(dataset, prefix="calculating paths"):# #
+        for item in progressBar(dataset, prefix="calculating paths"):
             paths.update(self.path(item))
 
         return [[first, set(middle), last] for first, middle, last in paths]
@@ -246,7 +247,7 @@ class MITSL(MTSL):
             )
         opposite = {}
         for i in self.grammar:
-            possib = self.generate_all_ngrams(list(i), self.k, addEdges=False)# # #check as tuple
+            possib = self.generate_all_ngrams(list(i), self.k, addEdges=False)#check as tuple
             opposite[i] = [j for j in possib if j not in self.grammar[i]]
 
         return opposite
@@ -258,12 +259,13 @@ class MITSL(MTSL):
         self.change_polarity()
 
     def map_restrictions_to_fsms(self):
+        """Builds FSM family corresponding to the given grammar"""
         restr_to_fsm = list()
 
         grammar = self.grammar if self.check_polarity() == "p" else self.opposite_polarity()
         for tier, ngrams in grammar.items():
             g = ngrams
-            fsm = FSM(">>", "<<")
+            fsm = FSM(self.edges[0] * self.m, self.edges[1] * self.m)
             fsm.sl_to_fsm(g)
             restr_to_fsm.append([tier, g, fsm])
         return restr_to_fsm
@@ -306,7 +308,7 @@ class MITSL(MTSL):
             )
 
         main_smap = self.general_state_map(tier_smap)
-        data = [self.generate_item(tier_smap, main_smap) for i in progressBar(range(n), prefix = "generating items")]# #
+        data = [self.generate_item(tier_smap, main_smap) for i in progressBar(range(n), prefix = "generating items")]
 
         if not repeat:
             data = set(data)
@@ -342,34 +344,30 @@ class MITSL(MTSL):
                   (tier_n):"string_image_given_tier_n"
                 }
         """
-        '''
+
         tiers = {}
         for i in self.grammar:
             curr_tier = list()
-            for s in string:
+            for index, s in enumerate(string):
                 if s in self.edges or s in i:
-                    curr_tier += [s]
+                    curr_tier += [(s, index)]
             tiers[i] = curr_tier
         return tiers
-        '''# # # #Original Code
-        # # #
-        tiers = {}
-        for i in self.grammar:
-            curr_tier = list()
-            for index, s in enumerate(string):# # #
-                if s in self.edges or s in i:
-                    curr_tier += [(s, index)]# # #This part is new
-            tiers[i] = curr_tier
-        return tiers
-        # # #End Modification
 
     def merge_symbols(self, word):
-        """Merges tuples of m-length symbols into one string by deleting overlapping letters between symbols"""
+        """Merges tuples of m-length symbols into one string by deleting overlapping letters between symbols
+        Arguments:
+            word (tuple of m-length strings): The word, represented as a sequence of m-length symbols
+        Returns:
+            (str): The word, with the overlapping parts of each symbol removed
+        """
         return "".join((s[-1] for s in word[1:-self.m]))
 
     def generate_item(self, tier_smap, main_smap = None):
         """Generates a well-formed string with respect to the given grammar.
-
+        Arguments:
+            tier_smap (dict): The dictionary of transitions within the FSMs that correspond to the tier grammars
+            main_smap (dict) (optional): The dictionary of transitions within all FSMs of the FSM family, will be computed if not provided
         Returns:
             str: a well-formed string.
         """
@@ -379,7 +377,7 @@ class MITSL(MTSL):
 
         while word[-1] != self.edges[1] * self.m:
             symbols = list(main_smap[word[-(self.k - 1) :][0]])
-            symbols = [symbol for symbol in symbols if symbol[:(self.m-1)] == word[-1][-(self.m-1):]]#This restriction replaces the default tier
+            symbols = [symbol for symbol in symbols if symbol[:(self.m-1)] == word[-1][-(self.m-1):]]#This restriction ensures that adjacent symbols can be merged together at the end
             shuffle(symbols)#just generating a list once and then going through it in a shuffled order is more efficient than picking a different random one each time
             exhausted = True
             for maybe in symbols:
@@ -387,20 +385,21 @@ class MITSL(MTSL):
                 for tier in tier_smap:
                     if maybe in tier:
                         old_image = [oldSymbol[0] for oldSymbol in tier_images[tier] if oldSymbol[1] < len(word) - (self.m - 1)]#this ignores any previous symbols that would overlap with the next symbol
-                        # # # # #old_image = [oldSymbol[0] for oldSymbol in tier_images[tier]]#this ignores any previous symbols that would overlap with the next symbol
                         while len(old_image) < self.k - 1:
                             old_image = [self.edges[0]*2] + old_image
                         if maybe not in tier_smap[tier][tuple(old_image[-(self.k - 1) :])]:
                             good = False
-                            break# #
+                            break
                 if good:
                     word += (maybe,)
                     tier_images = self.tier_image(word)
                     exhausted = False#we found a symbol that works here, so we did not exhaust our options
                     break
             if exhausted:
-                print('We have generated ourselves into a corner with the word ', str(word))
+                print('We have generated ourselves into a corner with the word', str(word), 'please check your grammar.')
                 return ""
+
+        print(word)
 
         newword = self.merge_symbols(word)
 
@@ -495,7 +494,7 @@ class MITSL(MTSL):
         from which one cannot get     to the final symbol, and removes
         them.
         """
-        for tier in progressBar(self.grammar, prefix = "cleaning grammar"):# #
+        for tier in progressBar(self.grammar, prefix = "cleaning grammar"):
             sl = SL()
             sl.change_polarity(self.check_polarity())
             sl.edges = [edge * self.m for edge in self.edges]

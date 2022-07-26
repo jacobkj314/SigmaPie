@@ -52,7 +52,7 @@ class L(object):
             self.alphabet = []
         symbols = set(self.alphabet)
         if self.data:
-            for item in progressBar(self.data, prefix = "extracting alphabet"):# #
+            for item in progressBar(self.data, prefix = "extracting alphabet"):
                 symbols.update({j for j in item})
         if self.grammar:
             for item in self.grammar:
@@ -103,25 +103,27 @@ class L(object):
 
         return True
 
-    def generate_all_ngrams(self, symbols, k, addEdges=True, printProgressBar=False):# #Added addEdges parameter to comply with MITSL
+    def generate_all_ngrams(self, symbols, k, addEdges=True, printProgressBar=False):
         """Generates all possible ngrams of the length k based on the given
         alphabet.
 
         Arguments:
             alphabet (list): alphabet;
             k (int): locality window (length of ngram).
+            addEdges (boolean) (optional): whether the edge character should be included. This was added as an option for MITSL, which should use multiple edge symbols instead of just a single edge character, so it handles this differently
+            printProgressBar (boolean) (optional): whether a progressBar should be printed
         Returns:
             list: generated ngrams.
         """
         symb = symbols[:]
-        if addEdges:# #Added for MITSL
+        if addEdges:
             if not ((self.edges[0] in symb) or (self.edges[1] in symb)):
                 symb += self.edges
 
         combinations = product(symb, repeat=k)
         ngrams = set()
 
-        if printProgressBar:# #I don't always want to do this, since this one gets called a lot, so making this optional
+        if printProgressBar:#I don't always want to do this, since this one gets called a lot, so making this optional
             combinations = progressBar([i for i in combinations], prefix = "generating ngrams")
 
         for ngram in combinations:
